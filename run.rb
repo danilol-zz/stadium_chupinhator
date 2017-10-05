@@ -12,9 +12,21 @@ module Chupinhator
     STADIUMS_URL = "http://stadiumdb.com/stadiums"
 
     def run
-      @client = Mongo::Client.new(['127.0.0.1:27017'], database: 'chupinhator', connect: :direct)
+      @client = Mongo::Client.new(['127.0.0.1:27017'], database: 'stadium_app_development', connect: :direct)
       countries = retrieve_countries
       stadiums = retrieve_stadiums(countries)
+    end
+
+    def check
+      url =  "http://stadiumdb.com/stadiums/bra/estadio_do_morumbi"
+      #url = "http://stadiumdb.com/stadiums/bra"
+      byebug
+      result = Typhoeus.get(url, followlocation: true).body
+      doc = Nokogiri::HTML(result)
+      country =  Nokogiri::HTML(result)
+      byebug
+      country.css('.table-stadiums').xpath("//tr[position() > 1]").css('a').map{|link| link['href']}.each do |url|
+      end
     end
 
     private
@@ -28,7 +40,7 @@ module Chupinhator
     end
 
     def stadiums_collection
-      @client[:stadiums]
+      @client[:stadia]
     end
 
     # STEP 1 - GET ALL THE COUNTRIES URL
@@ -54,21 +66,23 @@ module Chupinhator
       stadiums = []
 
       countries.each do |country|
+        #Nokogiri::HTML(result).css('.table-stadiums tr td').each do |country_page|
+        #country.css('.table-stadiums').xpath("//tr[position() > 1]").css('a').map{|link| link['href']}.each do |url|
         result = Typhoeus.get(country[:url], followlocation: true).body
         country =  Nokogiri::HTML(result)
-        country.css('.table-stadiums').xpath("//tr[position() > 1]").css('a').map{|link| link['href']}.each do |url|
-          puts url
-          result = Typhoeus.get(url, followlocation: true).body
+        country.css('.table-stadiums').xpath("//tr[position() > 1]").each do |url|
+          stadium_url  = url.css('a').map{|link| link['href']}.first
+          real_name = url.css('a').text
+
+          result = Typhoeus.get(stadium_url, followlocation: true).body
 
           doc = Nokogiri::HTML(result)
           #doc.xpath('//text()').find_all {|t| t.to_s.strip == ''}.map(&:remove)
           stadium = {}
 
-          stadium[:capacity] = {
-            total: doc.css('.stadium-info .capacity > td').text,
-            additional: doc.css('.stadium-info .capacity-comp > td').text
-          }
-          stadium[:country]      = doc.css('.stadium-info .flag-m').css('a').text
+          stadium[:capacity_total]      = doc.css('.stadium-info .capacity > td').text
+          stadium[:capacity_additional] = doc.css('.stadium-info .capacity-comp > td').text
+          stadium[:country]             = doc.css('.stadium-info .flag-m').css('a').text
 
           doc.css('.stadium-info tr').each do |row|
             stadium[:city]              = row.css('td').text if row.css('th').children.text == "City"
@@ -84,7 +98,7 @@ module Chupinhator
             stadium[:record_attendance] = row.css('td').text if row.css('th').children.text == "Record attendance"
           end
 
-          stadium[:name]         = doc.css('.stadium-description h1').children.to_html.gsub("Description: ", "")
+          stadium[:name]         = real_name || doc.css('.stadium-description h1').children.to_html.gsub("Description: ", "")
           stadium[:description]  = doc.css('.stadium-description p').children.to_html
           stadium[:images]       = []
 
@@ -117,3 +131,4 @@ module Chupinhator
 end
 
 Chupinhator::Stadium.new.run
+#Chupinhator::Stadium.new.check
